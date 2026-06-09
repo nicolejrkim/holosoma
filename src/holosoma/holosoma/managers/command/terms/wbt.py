@@ -741,8 +741,9 @@ class TwoLayerAdaptiveSampler:
         adaptive_alpha: float = 0.001,
         motion_filenames: list[str] | None = None,
         top1_prob_cap: float = 0.0,
-        sonic_style: bool = False,
-        sonic_failure_rate_max_over_mean: float = 200.0,
+        failure_weighted: bool = False,
+        failure_rate_max_over_mean: float = 200.0,
+        failure_counts_monotonic: bool = False,
     ):
         self.device = device
         self.env_fps = max(env_fps, 1)
@@ -754,11 +755,26 @@ class TwoLayerAdaptiveSampler:
         # the total sampling mass — applied via water-fill redistribution
         # post-mixture in motion_sampling_probabilities.
         self.top1_prob_cap = float(top1_prob_cap)
-        # SONIC-style sampling: use per-bin failure RATE (not count) with a
+        # Failure-weighted sampling: use per-bin failure RATE (not count) with a
         # max-over-mean cap. Long clips don't dominate because the rate is
         # length-independent.
-        self.sonic_style = bool(sonic_style)
-        self.sonic_failure_rate_max_over_mean = float(sonic_failure_rate_max_over_mean)
+        self.failure_weighted = bool(failure_weighted)
+        self.failure_rate_max_over_mean = float(failure_rate_max_over_mean)
+        # Monotonic-count mode: numerator/denominator are RAW MONOTONIC
+        # counters (no EMA, no per-step decay), mirroring the reference
+        # num_failures / num_episodes which accumulate forever. The plain
+        # `failure_weighted` path applies an alpha-weighted EMA update +
+        # per-step decay (legacy behaviour kept for backward compat with the
+        # DE-029/030 runs); set this flag for new sweeps that want exact
+        # raw-count semantics. Only meaningful when failure_weighted=True.
+        self.failure_counts_monotonic = bool(failure_counts_monotonic)
+        if self.failure_counts_monotonic and not self.failure_weighted:
+            raise ValueError(
+                "failure_counts_monotonic=True requires failure_weighted=True. "
+                "The monotonic-count flag only affects the failure-weighted "
+                "per-bin failure-rate sampler; it has no effect on the legacy "
+                "EMA-only count-based sampler."
+            )
 
         self.motion_start_idx = motion_start_idx.to(device).long()
         self.motion_end_idx = motion_end_idx.to(device).long()
@@ -780,10 +796,10 @@ class TwoLayerAdaptiveSampler:
         self.bin_valid_mask = valid_mask
         self.bin_failed_ema = valid_mask.float().clone()
 
-        # SONIC-style: also track episode-count EMA per (motion, bin) so we can compute
-        # failure_rate = failed / episodes. Init to ones (matches SONIC's pseudo-count
-        # init that prevents NaN at start).
-        if self.sonic_style:
+        # Failure-weighted: also track episode-count EMA per (motion, bin) so we can
+        # compute failure_rate = failed / episodes. Init to ones (pseudo-count init
+        # that prevents NaN at start).
+        if self.failure_weighted:
             self.bin_episode_ema = valid_mask.float().clone()
 
         self.metrics: dict[str, torch.Tensor] = {}
@@ -796,8 +812,8 @@ class TwoLayerAdaptiveSampler:
     ) -> None:
         """Inject reset-time episode + failure events into both layer EMAs.
 
-        Mirrors gear_sonic ``update_adaptive_sampling`` (motion_lib_base.py:2462):
-        SONIC credits BOTH the episode counter and the failure counter at the
+        Mirrors the reference ``update_adaptive_sampling`` (motion_lib_base.py:2462):
+        credit BOTH the episode counter and the failure counter at the
         END time-step bin (i.e., the bin where the env terminated/reset). All
         reset envs (failed or timed-out) bump the episode counter; only the
         failed-mask subset bumps the failure counter. This keeps the per-bin
@@ -833,12 +849,17 @@ class TwoLayerAdaptiveSampler:
             * self.bin_valid_mask.float()
         )
 
-        # SONIC-style: credit episode count for ALL reset envs at the end-bin.
+        # Failure-weighted: credit episode count for ALL reset envs at the end-bin.
         # Required so the per-bin rate denominator tracks bins actually reached
         # (otherwise easy clips that timeout-but-never-fail get rate→1, making
         # them look hard).
-        if self.sonic_style and hasattr(self, "bin_episode_ema"):
-            self.bin_episode_ema = self.bin_episode_ema + self.adaptive_alpha * reset_inc
+        # Monotonic path: raw +1 (matches the reference num_episodes counter).
+        # EMA path: alpha-weighted increment (legacy DE-029/030 behaviour).
+        if self.failure_weighted and hasattr(self, "bin_episode_ema"):
+            if self.failure_counts_monotonic:
+                self.bin_episode_ema = self.bin_episode_ema + reset_inc
+            else:
+                self.bin_episode_ema = self.bin_episode_ema + self.adaptive_alpha * reset_inc
 
         # Failure-only updates (subset of reset envs).
         failed_motion_ids = reset_motion_ids[failed_mask]
@@ -847,7 +868,10 @@ class TwoLayerAdaptiveSampler:
 
         # Layer 1: per-motion failure count → alpha-weighted increment.
         layer1_inc = torch.bincount(failed_motion_ids, minlength=self.num_motions).float()
-        self.motion_failed_ema = self.motion_failed_ema + self.adaptive_alpha * layer1_inc
+        if self.failure_weighted and self.failure_counts_monotonic:
+            self.motion_failed_ema = self.motion_failed_ema + layer1_inc
+        else:
+            self.motion_failed_ema = self.motion_failed_ema + self.adaptive_alpha * layer1_inc
 
         # Layer 2: per-(motion, bin) failure count, restricted to failed envs.
         failed_flat_idx = reset_flat_idx[failed_mask]
@@ -857,12 +881,15 @@ class TwoLayerAdaptiveSampler:
             .view(self.num_motions, self.K_max)
             * self.bin_valid_mask.float()
         )
-        self.bin_failed_ema = self.bin_failed_ema + self.adaptive_alpha * layer2_inc
+        if self.failure_weighted and self.failure_counts_monotonic:
+            self.bin_failed_ema = self.bin_failed_ema + layer2_inc
+        else:
+            self.bin_failed_ema = self.bin_failed_ema + self.adaptive_alpha * layer2_inc
 
     # Backward-compat shim: callers that only have failure data (no reset_mask)
     # can still funnel through update_episodes_and_failures by treating every
     # reset as a failure. Used by Layer-1-only callers and as a safety net for
-    # external code paths that haven't been updated. SONIC-style mode requires
+    # external code paths that haven't been updated. Failure-weighted mode requires
     # the new entry point because the episode denominator is meaningful.
     def update_failures(
         self,
@@ -883,17 +910,17 @@ class TwoLayerAdaptiveSampler:
         proportionally more failure events even at uniform per-frame failure rate,
         so they dominate. Mitigated (but not eliminated) by mixture floor + hard cap.
 
-        SONIC-style mode (sonic_style=True): aggregate per-bin failure RATE — i.e.
+        Failure-weighted mode (failure_weighted=True): aggregate per-bin failure RATE — i.e.
         ``failure_count / episode_count`` averaged across bins of each motion.
-        Length-independent. Cap per-motion rate at ``sonic_failure_rate_max_over_mean
+        Length-independent. Cap per-motion rate at ``failure_rate_max_over_mean
         x mean_rate`` (default 200x) before normalizing. Mixture floor applied on top.
         """
         n = self.num_motions
         uniform_p = torch.full((n,), 1.0 / max(n, 1), device=self.device)
         r = float(self.adaptive_uniform_ratio)
 
-        if self.sonic_style and hasattr(self, "bin_episode_ema"):
-            # SONIC reference: per-BIN failure rate is failed/episode (motion_lib_base.py:2531),
+        if self.failure_weighted and hasattr(self, "bin_episode_ema"):
+            # Reference: per-BIN failure rate is failed/episode (motion_lib_base.py:2531),
             # then capped at mean x max_over_mean (default 200), normalized to a per-bin
             # distribution, and finally aggregated to per-motion by SUMMING the (capped,
             # uniform-mixed) per-bin probabilities over each motion's bins
@@ -908,14 +935,14 @@ class TwoLayerAdaptiveSampler:
             per_bin_rate = per_bin_rate * valid  # zero invalid bins
 
             # Step 1: cap per-bin rate at mean (across valid bins) x max_over_mean.
-            max_over_mean = self.sonic_failure_rate_max_over_mean
+            max_over_mean = self.failure_rate_max_over_mean
             valid_total = valid.sum().clamp(min=1.0)
             mean_rate = per_bin_rate.sum() / valid_total  # mean over valid bins
             rate_cap = mean_rate.clamp(min=1e-12) * max_over_mean
             per_bin_rate_clipped = per_bin_rate.clamp(max=rate_cap) * valid
 
             # Step 2: aggregate to per-motion by summing each motion's bin rates.
-            # Length-independent in the same sense as SONIC: capping bounds each bin's
+            # Length-independent: capping bounds each bin's
             # contribution; longer clips with more bins still get more probability mass
             # but only proportional to bin count, not proportional to length x per-bin-rate.
             per_motion_rate = per_bin_rate_clipped.sum(dim=1)  # (num_motions,)
@@ -966,7 +993,7 @@ class TwoLayerAdaptiveSampler:
         sampled_bins = torch.minimum(sampled_bins, K_per_env - 1)
         # NOTE: bin_episode_ema is credited inside update_episodes_and_failures at the
         # END-time-step bin (where the env actually terminated/reset), NOT here at the
-        # start-time-step bin. Mirrors SONIC reference (motion_lib_base.py:2479-2487):
+        # start-time-step bin. Mirrors the reference (motion_lib_base.py:2479-2487):
         # both num_episodes and num_failures are bumped at the same bin so per-bin rate
         # ``failed/episode`` stays aligned. Crediting episodes here would put numerator
         # and denominator at different bins.
@@ -1201,10 +1228,9 @@ class MotionCommand(CommandTermBase):
                     adaptive_alpha=self.motion_cfg.adaptive_alpha,
                     motion_filenames=getattr(self.motion, "motion_filenames", None),
                     top1_prob_cap=float(getattr(self.motion_cfg, "motion_sampling_top1_prob_cap", 0.0)),
-                    sonic_style=bool(getattr(self.motion_cfg, "sonic_style_sampler", False)),
-                    sonic_failure_rate_max_over_mean=float(
-                        getattr(self.motion_cfg, "sonic_failure_rate_max_over_mean", 200.0)
-                    ),
+                    failure_weighted=bool(getattr(self.motion_cfg, "failure_weighted_sampler", False)),
+                    failure_rate_max_over_mean=float(getattr(self.motion_cfg, "failure_rate_max_over_mean", 200.0)),
+                    failure_counts_monotonic=bool(getattr(self.motion_cfg, "failure_counts_monotonic", False)),
                 )
             else:
                 self.two_layer_sampler = None  # type: ignore[assignment]
@@ -1255,7 +1281,7 @@ class MotionCommand(CommandTermBase):
             else:
                 episode_failed = torch.zeros_like(env_ids, dtype=torch.bool)
 
-            # Two-layer sampler (incl. SONIC-style): credit episode count for ALL
+            # Two-layer sampler (incl. failure-weighted): credit episode count for ALL
             # reset envs at end-bin, and credit failure count for the failed-mask
             # subset at the same bin. Required during training (not eval) and only
             # when there's anything to credit.
@@ -1343,7 +1369,7 @@ class MotionCommand(CommandTermBase):
         root_ang_vel = self.motion._body_ang_vel_w[reset_ts, 0]
 
         # Snap running_ref_root_height EMA to the freshly-sampled timestep's
-        # ref pelvis z so SONIC-style adaptive terminations don't carry stale
+        # ref pelvis z so failure-weighted adaptive terminations don't carry stale
         # cross-clip history at episode start.
         if hasattr(self, "running_ref_root_height"):
             self.running_ref_root_height[env_ids] = (  # type: ignore[has-type]
@@ -1524,10 +1550,10 @@ class MotionCommand(CommandTermBase):
             sim.set_dof_state_tensor_robots(ended_env_ids, sim.dof_state)  # type: ignore[attr-defined]
             sim.refresh_sim_tensors()
 
-        # Update running_ref_root_height EMA (alpha=0.1, matches gear_sonic).
+        # Update running_ref_root_height EMA (alpha=0.1, matches the reference).
         # Read the reference pelvis world-z at the current per-env time_step
         # (motion._body_pos_w is the raw motion-frame body positions, body 0 = root).
-        # Used by SONIC-style adaptive terminations to relax thresholds during
+        # Used by failure-weighted adaptive terminations to relax thresholds during
         # low-pelvis sections (breakdance, kneeling, handstand).
         ema_alpha_root = 0.1
         ref_root_z_now = self.motion._body_pos_w[self.time_steps, 0, 2]
@@ -1597,14 +1623,18 @@ class MotionCommand(CommandTermBase):
             # the average episode length in env steps).
             tl = getattr(self, "two_layer_sampler", None)
             if tl is not None:
-                decay = 1.0 - tl.adaptive_alpha
-                tl.motion_failed_ema *= decay
-                tl.bin_failed_ema *= decay
-                # SONIC-style: episode-counter denominator must decay symmetrically
-                # with bin_failed_ema, otherwise per-bin rate = failed/episode collapses
-                # over training (numerator decays, denominator grows).
-                if getattr(tl, "sonic_style", False) and hasattr(tl, "bin_episode_ema"):
-                    tl.bin_episode_ema *= decay
+                # In monotonic mode counts accumulate forever;
+                # any decay corrupts the per-bin rate. Only decay in the legacy
+                # EMA path.
+                if not getattr(tl, "failure_counts_monotonic", False):
+                    decay = 1.0 - tl.adaptive_alpha
+                    tl.motion_failed_ema *= decay
+                    tl.bin_failed_ema *= decay
+                    # Failure-weighted: episode-counter denominator must decay symmetrically
+                    # with bin_failed_ema, otherwise per-bin rate = failed/episode collapses
+                    # over training (numerator decays, denominator grows).
+                    if getattr(tl, "failure_weighted", False) and hasattr(tl, "bin_episode_ema"):
+                        tl.bin_episode_ema *= decay
             ema1 = getattr(self, "_motion_failed_ema_layer1_only", None)
             if ema1 is not None:
                 ema1 *= 1.0 - self.motion_cfg.adaptive_alpha
@@ -1784,10 +1814,10 @@ class MotionCommand(CommandTermBase):
         # resample step, since body tensors lag one frame after teleport.
         self.motion_end_reset = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
-        # EMA of the reference's pelvis world-z, per env. Used by SONIC-style
+        # EMA of the reference's pelvis world-z, per env. Used by failure-weighted
         # adaptive terminations to relax thresholds during low-pelvis sections
         # (breakdance, kneeling, handstand-to-bridge, supine). alpha=0.1 — same
-        # smoothing as gear_sonic's `running_ref_root_height`. Initialized to 0.78m
+        # smoothing as the reference's `running_ref_root_height`. Initialized to 0.78m
         # (rough G1 standing pelvis height) so the first step doesn't miscategorize
         # everything as "low".
         self.running_ref_root_height = torch.full((self.num_envs,), 0.78, dtype=torch.float, device=self.device)

@@ -183,6 +183,11 @@ class PPOConfig:
     empirical_normalization: bool = False
     """Whether to apply empirical normalization to actor and critic observations."""
 
+    critic_empirical_normalization: bool | None = None
+    """Critic-only empirical-normalization override. None = follow `empirical_normalization`
+    (legacy behavior, actor+critic coupled). Set True to normalize the critic observations
+    while the actor observations stay raw (asymmetric actor/critic normalization)."""
+
     eval_callbacks: Any = None
     """Evaluation callbacks configuration."""
 

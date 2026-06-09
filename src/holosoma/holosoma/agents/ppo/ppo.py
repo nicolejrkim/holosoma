@@ -218,6 +218,11 @@ class PPO(BaseAlgo):
         # Observation related Config
         self.use_symmetry = self.config.use_symmetry
         self.empirical_normalization = self.config.empirical_normalization
+        # Critic-only override: None → couple to actor flag (legacy). True/False →
+        # decouple so the critic observations can be normalized while the actor
+        # observations stay raw (asymmetric actor/critic normalization).
+        _critic_norm = getattr(self.config, "critic_empirical_normalization", None)
+        self.critic_empirical_normalization = self.empirical_normalization if _critic_norm is None else _critic_norm
         self._init_obs_keys()
 
     def _init_obs_keys(self):
@@ -255,9 +260,11 @@ class PPO(BaseAlgo):
         critic_obs_dim = self._get_obs_dim(self.critic_obs_keys)
         if self.empirical_normalization:
             self.actor_obs_normalizer: nn.Module = EmpiricalNormalization(shape=actor_obs_dim, device=self.device)
-            self.critic_obs_normalizer: nn.Module = EmpiricalNormalization(shape=critic_obs_dim, device=self.device)
         else:
             self.actor_obs_normalizer = nn.Identity()
+        if self.critic_empirical_normalization:
+            self.critic_obs_normalizer: nn.Module = EmpiricalNormalization(shape=critic_obs_dim, device=self.device)
+        else:
             self.critic_obs_normalizer = nn.Identity()
 
         if self.use_symmetry:
@@ -266,6 +273,24 @@ class PPO(BaseAlgo):
         # Synchronize model weights across GPUs after initialization
         if self.is_multi_gpu:
             self._synchronize_model_weights()
+
+        # Gradient sync across GPUs. The default `_reduce_parameters` already does
+        # ONE bucketed all_reduce (flatten ALL grads → single collective → unflatten),
+        # which scales cleanly to many nodes — this is NOT a bottleneck.
+        # WBT_OVERLAP_GRAD_ALLREDUCE=1 is an EXPERIMENTAL per-parameter async-overlap
+        # path; it issues hundreds of tiny collectives per backward and does NOT
+        # scale past ~16 GPUs (NCCL channel exhaustion / hangs at 32-64 ranks), so it
+        # is OFF by default. Keep the single bucketed all_reduce for multi-node.
+        self._overlap_grad_allreduce = self.is_multi_gpu and os.environ.get(
+            "WBT_OVERLAP_GRAD_ALLREDUCE", ""
+        ).strip() in ("1", "true", "True")
+        self._grad_reduce_handles: list = []
+        if self._overlap_grad_allreduce:
+            self._register_overlapped_grad_hooks()
+            logger.warning(
+                "[multi-gpu] per-param overlapped grad all-reduce ENABLED — EXPERIMENTAL, "
+                "does NOT scale past ~16 GPUs; prefer the default bucketed all_reduce for multi-node."
+            )
 
         self.actor_optimizer = instantiate(
             self.config.actor_optimizer, params=self.actor.parameters(), lr=self.actor_learning_rate
@@ -299,7 +324,7 @@ class PPO(BaseAlgo):
         return actor_obs
 
     def _normalize_critic_obs(self, critic_obs: torch.Tensor, update: bool = True) -> torch.Tensor:
-        if self.empirical_normalization:
+        if self.critic_empirical_normalization:
             return self.critic_obs_normalizer(critic_obs, update=update)
         return critic_obs
 
@@ -430,10 +455,15 @@ class PPO(BaseAlgo):
                     # Update episode stats using logging helper
                     self.logging_helper.update_episode_stats(rewards, dones, infos)
 
-            # Flush deferred normalizer stats sync (one all_reduce instead of per-step)
-            if self.empirical_normalization and self.is_multi_gpu:
-                self.actor_obs_normalizer.flush_deferred_sync()
-                self.critic_obs_normalizer.flush_deferred_sync()
+            # Flush deferred normalizer stats sync (one all_reduce instead of per-step).
+            # Guard each side independently: actor and critic normalization can now be
+            # decoupled (critic_empirical_normalization), so only flush the side whose
+            # normalizer is a real EmpiricalNormalization (Identity has no flush).
+            if self.is_multi_gpu:
+                if self.empirical_normalization:
+                    self.actor_obs_normalizer.flush_deferred_sync()
+                if self.critic_empirical_normalization:
+                    self.critic_obs_normalizer.flush_deferred_sync()
 
             # Return / Advantage computation
             last_critic_obs = torch.cat([obs_dict[k] for k in self.critic_obs_keys], dim=1)
@@ -503,7 +533,13 @@ class PPO(BaseAlgo):
         ppo_loss.backward()
 
         if self.is_multi_gpu:
-            self._reduce_parameters()
+            if self._overlap_grad_allreduce:
+                # Async all_reduces were launched by per-param hooks DURING the
+                # backward above (overlapping comms with compute); just wait for
+                # them to finish before stepping.
+                self._wait_grad_reduce()
+            else:
+                self._reduce_parameters()
 
         # Gradient step
         nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.max_grad_norm)
@@ -663,7 +699,7 @@ class PPO(BaseAlgo):
             self.critic.load_state_dict(loaded_dict["critic_model_state_dict"])
             if self.empirical_normalization and loaded_dict.get("actor_obs_normalizer_state_dict") is not None:
                 self.actor_obs_normalizer.load_state_dict(loaded_dict["actor_obs_normalizer_state_dict"])
-            if self.empirical_normalization and loaded_dict.get("critic_obs_normalizer_state_dict") is not None:
+            if self.critic_empirical_normalization and loaded_dict.get("critic_obs_normalizer_state_dict") is not None:
                 self.critic_obs_normalizer.load_state_dict(loaded_dict["critic_obs_normalizer_state_dict"])
             if self.config.load_optimizer:
                 self.actor_optimizer.load_state_dict(loaded_dict["actor_optimizer_state_dict"])
@@ -686,7 +722,7 @@ class PPO(BaseAlgo):
                 self.actor_obs_normalizer.state_dict() if self.empirical_normalization else None
             ),
             "critic_obs_normalizer_state_dict": (
-                self.critic_obs_normalizer.state_dict() if self.empirical_normalization else None
+                self.critic_obs_normalizer.state_dict() if self.critic_empirical_normalization else None
             ),
             "iter": self.current_learning_iteration,
             "infos": infos,
@@ -770,6 +806,39 @@ class PPO(BaseAlgo):
         # Use logging helper
         self.logging_helper.post_epoch_logging(it=it, loss_dict=loss_dict, extra_log_dicts=extra_log_dicts)
 
+    def _register_overlapped_grad_hooks(self):
+        """Register per-parameter post-accumulate-grad hooks that launch an ASYNC
+        all_reduce as soon as each param's grad is finalized during backward.
+
+        Overlaps gradient comms with the still-running backward pass (the win that
+        makes multi-node scale). Handles are collected and waited on in
+        `_wait_grad_reduce()` before the optimizer step. Each hook divides by the
+        world size so the result is the mean (matching `_reduce_parameters`).
+        """
+        world = float(self.gpu_world_size)
+
+        def _make_hook(p):
+            def _hook(param):
+                if param.grad is None:
+                    return
+                param.grad.div_(world)
+                handle = torch.distributed.all_reduce(param.grad, op=torch.distributed.ReduceOp.SUM, async_op=True)
+                self._grad_reduce_handles.append(handle)
+
+            return _hook
+
+        for model in [self.actor, self.critic]:
+            for p in model.parameters():
+                if p.requires_grad:
+                    p.register_post_accumulate_grad_hook(_make_hook(p))
+
+    def _wait_grad_reduce(self):
+        """Block until all in-flight async grad all_reduces from this backward
+        have completed, then clear the handle list for the next step."""
+        for handle in self._grad_reduce_handles:
+            handle.wait()
+        self._grad_reduce_handles.clear()
+
     def _reduce_parameters(self):
         grads = [
             param.grad.view(-1)
@@ -793,16 +862,22 @@ class PPO(BaseAlgo):
                     offset += numel
 
     def _synchronize_model_weights(self):
-        """Synchronize actor and critic weights across all GPUs."""
-        # Broadcast actor weights from rank 0 to all other ranks
-        for param in self.actor.parameters():
-            torch.distributed.broadcast(param.data, src=0)
+        """Synchronize actor and critic weights across all GPUs.
 
-        # Broadcast critic weights from rank 0 to all other ranks
-        for param in self.critic.parameters():
-            torch.distributed.broadcast(param.data, src=0)
-
-        logger.info(f"Synchronized model weights across {self.gpu_world_size} GPUs")
+        Uses a SINGLE bucketed broadcast (flatten all params → one collective →
+        unflatten) instead of one broadcast per parameter. The per-parameter loop
+        issues hundreds of tiny serialized collectives, which is slow at 8-16 GPUs
+        and HANGS at 32-64 ranks over the network (NCCL channel exhaustion). One
+        large collective scales cleanly to many nodes.
+        """
+        params = [p for p in self.actor.parameters()] + [p for p in self.critic.parameters()]
+        if not params:
+            return
+        flat = torch._utils._flatten_dense_tensors([p.data for p in params])
+        torch.distributed.broadcast(flat, src=0)
+        for p, synced in zip(params, torch._utils._unflatten_dense_tensors(flat, [p.data for p in params])):
+            p.data.copy_(synced)
+        logger.info(f"Synchronized model weights across {self.gpu_world_size} GPUs (bucketed broadcast)")
 
     def _normalize_advantages_multi_gpu(self, advantages):
         local_stats = torch.stack(

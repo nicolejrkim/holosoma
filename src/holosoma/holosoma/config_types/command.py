@@ -201,22 +201,28 @@ class MotionConfig:
     clip whose basename contains that substring. Default = empty tuple (no exclusion).
     """
 
-    sonic_style_sampler: bool = False
+    failure_weighted_sampler: bool = False
     """When True (with adaptive_phase_per_motion=True and adaptive_motion_weighting='failure'),
-    rewrite the motion-id sampling distribution to match SONIC's per-bin formulation:
+    rewrite the motion-id sampling distribution to a per-bin failure-RATE formulation:
       - Per-(motion_id, bin) failure RATE instead of failure COUNT (normalize by episode count)
-      - Hard cap on per-bin failure rate at ``sonic_failure_rate_max_over_mean x mean_rate``
+      - Hard cap on per-bin failure rate at ``failure_rate_max_over_mean x mean_rate``
       - Mixture floor: ``(1-r)*failure_p + r*uniform_p`` (same as default)
       - Optional per-bin probability cap (water-fill redistribution)
-    The key fix vs default sampler: long clips (e.g. fightAndSports1_subject4 at 60x typical
+    The key fix vs the default sampler: long clips (e.g. fightAndSports1_subject4 at 60x typical
     length) no longer dominate by accumulating proportionally more raw failure count — instead
     they're treated as many independent bins with their own per-bin rate, capped at 200x
     the mean rate."""
 
-    sonic_failure_rate_max_over_mean: float = 200.0
-    """When sonic_style_sampler=True: cap per-bin failure rate at this multiple of the mean.
-    Matches SONIC's default of 200 (their production runs sonic_release / sonic_h2 use 200).
-    Lower (e.g. 50) curtails outlier clips more aggressively; higher disables the cap."""
+    failure_rate_max_over_mean: float = 200.0
+    """When failure_weighted_sampler=True: cap per-bin failure rate at this multiple of the mean.
+    Default 200 (matches the reference production runs). Lower (e.g. 50) curtails outlier clips
+    more aggressively; higher disables the cap."""
+
+    failure_counts_monotonic: bool = False
+    """When failure_weighted_sampler=True: use raw monotonic counters (no EMA, no per-step decay)
+    for the per-bin failure-rate numerator/denominator. Mirrors the reference
+    `num_failures / num_episodes` semantics exactly. The default (False) keeps the legacy
+    alpha-weighted EMA + per-step decay used by the DE-029/030 runs."""
 
     # multi-motion adaptive sampling — two-layer
     adaptive_motion_weighting: str = "uniform"

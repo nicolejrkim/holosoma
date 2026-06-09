@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from typing import Any, Callable
 
 import torch
@@ -41,8 +40,11 @@ class ObservationManager:
         self._term_funcs: dict[str, dict[str, Callable]] = {}
         self._term_instances: dict[str, dict[str, ObservationTermBase]] = {}
 
-        # History buffers: group_name -> term_name -> deque
-        self._history_buffers: dict[str, dict[str, deque]] = {}
+        # History buffers: group_name -> term_name -> state containing flattened
+        # [num_envs, history * obs_dim] tensors.
+        # Buffers are lazily allocated on the first observation compute, when each
+        # term's concrete dimension and dtype are known.
+        self._history_buffers: dict[str, dict[str, dict[str, Any] | None]] = {}
 
         # Initialize groups
         self._initialize_groups()
@@ -69,7 +71,7 @@ class ObservationManager:
 
                 # Initialize history buffer if needed (using group-level history_length)
                 if group_cfg.history_length > 1:
-                    self._history_buffers[group_name][term_name] = deque(maxlen=group_cfg.history_length)
+                    self._history_buffers[group_name][term_name] = None
 
     def compute(self, *, modify_history: bool = True) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """Compute all observation groups.
@@ -169,6 +171,8 @@ class ObservationManager:
             func = self._term_funcs[group_name][term_name]
             obs = func(self.env, **term_cfg.params)
 
+        if isinstance(obs, torch.Tensor):
+            return obs
         return obs.clone()
 
     def _apply_noise(self, obs: torch.Tensor, noise_scale: float) -> torch.Tensor:
@@ -215,8 +219,7 @@ class ObservationManager:
     ) -> torch.Tensor:
         """Apply history buffering to an observation term.
 
-        Maintains a circular buffer of past observations and returns them
-        concatenated along the feature dimension.
+        Maintains a flattened history buffer of past observations.
 
         Parameters
         ----------
@@ -237,31 +240,42 @@ class ObservationManager:
         torch.Tensor
             Historical observations with shape ``[num_envs, obs_dim * history_length]``.
         """
-        buffer = self._history_buffers[group_name][term_name]
+        obs_dim = obs.shape[1]
+        state = self._history_buffers[group_name][term_name]
+        expected_shape = (self.env.num_envs, group_cfg.history_length * obs_dim)
+
+        if (
+            state is None
+            or state["buffers"][0].shape != expected_shape
+            or state["buffers"][0].dtype != obs.dtype
+            or state["buffers"][0].device != obs.device
+        ):
+            state = {
+                "buffers": [
+                    torch.zeros(expected_shape, device=obs.device, dtype=obs.dtype),
+                    torch.zeros(expected_shape, device=obs.device, dtype=obs.dtype),
+                ],
+                "temp": torch.zeros(expected_shape, device=obs.device, dtype=obs.dtype),
+                "active": 0,
+            }
+            self._history_buffers[group_name][term_name] = state
 
         if modify_buffer:
-            # Add current observation to buffer
-            buffer.append(obs)
-            history = list(buffer)
-        else:
-            # Don't modify buffer - create temporary history with current obs
-            history = list(buffer) + [obs]
-            # Trim to history_length if needed
-            if len(history) > group_cfg.history_length:
-                history = history[-group_cfg.history_length :]
+            src = state["buffers"][state["active"]]
+            dst_idx = 1 - state["active"]
+            dst = state["buffers"][dst_idx]
+            # Shift older frames left and place the current frame at the end.
+            dst[:, :-obs_dim].copy_(src[:, obs_dim:])
+            dst[:, -obs_dim:].copy_(obs)
+            state["active"] = dst_idx
+            return dst
 
-        # If buffer not full yet, pad with zeros (same as direct behavior)
-        if len(history) < group_cfg.history_length:
-            num_missing = group_cfg.history_length - len(history)
-            obs_dim = obs.shape[1]
-            padding = [torch.zeros(self.env.num_envs, obs_dim, device=self.device) for _ in range(num_missing)]
-            history = padding + history
-
-        # Stack along time dimension: [num_envs, history_length, obs_dim]
-        stacked = torch.stack(history, dim=1)
-
-        # Flatten to [num_envs, history_length * obs_dim]
-        return stacked.reshape(self.env.num_envs, -1)
+        # Preserve the stored history for bootstrap/final observations.
+        buffer = state["buffers"][state["active"]]
+        history = state["temp"]
+        history[:, :-obs_dim].copy_(buffer[:, obs_dim:])
+        history[:, -obs_dim:].copy_(obs)
+        return history
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         """Reset observation history and stateful terms.
@@ -282,14 +296,19 @@ class ObservationManager:
 
         # Reset or clear history buffers
         for group_buffers in self._history_buffers.values():
-            for buffer in group_buffers.values():
+            for state in group_buffers.values():
+                if state is None:
+                    continue
                 if env_ids_tensor is None:
-                    buffer.clear()
+                    for buffer in state["buffers"]:
+                        buffer.zero_()
+                    state["temp"].zero_()
                 else:
                     if env_ids_tensor.numel() == 0:
                         continue
-                    for history in buffer:
-                        history[env_ids_tensor] = 0.0
+                    for buffer in state["buffers"]:
+                        buffer[env_ids_tensor] = 0.0
+                    state["temp"][env_ids_tensor] = 0.0
 
         # Reset stateful term instances
         for group_instances in self._term_instances.values():
