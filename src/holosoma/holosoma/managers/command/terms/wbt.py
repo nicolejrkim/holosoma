@@ -1357,7 +1357,11 @@ class MotionCommand(CommandTermBase):
         # If the motion is at the last timestep, set it to the second last timestep;
         # Otherwise, update_tasks_callback will advance the timestep to the next timestep -> out of bounds error.
         already_last_timestep_mask = self.time_steps[env_ids] >= end_idx - 1
-        self.time_steps[env_ids] = torch.where(already_last_timestep_mask, end_idx - 2, self.time_steps[env_ids])
+        # Floor the step-back at this clip's OWN start_idx: for a degenerate <2-frame clip in a
+        # concatenation, end_idx-2 could fall below start_idx and index into the PREVIOUS clip's frames.
+        # (Bug B2, Nikhil — defensive; real datasets have no <2-frame clips.)
+        safe_second_last = torch.maximum(end_idx - 2, start_idx)
+        self.time_steps[env_ids] = torch.where(already_last_timestep_mask, safe_second_last, self.time_steps[env_ids])
 
         # 1. Get the root/body poses from the motion data
         # Index only reset-env timesteps (raw body index 0 = root, same as root_pos_w property)
@@ -1549,6 +1553,13 @@ class MotionCommand(CommandTermBase):
             sim.set_actor_root_state_tensor_robots(ended_env_ids, sim.robot_root_states)
             sim.set_dof_state_tensor_robots(ended_env_ids, sim.dof_state)  # type: ignore[attr-defined]
             sim.refresh_sim_tensors()
+            # The soft reset teleports the robot+object to a new clip WITHOUT ending the episode, so it
+            # must honor the same contract as a hard reset and clear the observation-history buffers for
+            # the teleported envs. Otherwise history-stacked observations (e.g. h10 proprio) leak
+            # pre-teleport frames across the (hard state discontinuity) clip boundary. (Bug B1, Nikhil.)
+            obs_manager = getattr(self._env, "observation_manager", None)
+            if obs_manager is not None:
+                obs_manager.reset(ended_env_ids)
 
         # Update running_ref_root_height EMA (alpha=0.1, matches the reference).
         # Read the reference pelvis world-z at the current per-env time_step
