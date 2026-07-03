@@ -763,8 +763,14 @@ def estimate_human_orientation(human_joints, joint_names, frame_idx=0):
     Returns:
         np.ndarray: Quaternion [w, x, y, z] representing the human's global orientation
     """
+    # For SEED / SOMA skeleton (thighs are LeftLeg/RightLeg, no plain "Spine")
+    if "LeftShin" in joint_names:
+        hips_idx = joint_names.index("Hips")
+        spine_idx = joint_names.index("Spine1")
+        left_hip_idx = joint_names.index("LeftLeg")
+        right_hip_idx = joint_names.index("RightLeg")
     # For LAFAN
-    if "Hips" in joint_names:
+    elif "Hips" in joint_names:
         hips_idx = joint_names.index("Hips")
         spine_idx = joint_names.index("Spine")
         left_hip_idx = joint_names.index("LeftUpLeg")
