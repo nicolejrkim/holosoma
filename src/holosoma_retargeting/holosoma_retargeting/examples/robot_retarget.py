@@ -210,7 +210,17 @@ def load_motion_data(
                 raise FileNotFoundError(f"LAFAN data file not found: {npy_path}")
 
             human_joints = np.load(str(npy_path))
-            human_joints = transform_y_up_to_z_up(human_joints)
+            if data_format == "seed":
+                # holosoma's transform_y_up_to_z_up is a REFLECTION (det -1)
+                # that inverts the forward axis: (x,y,z)->(x,z,y). It suits
+                # LAFAN's convention but flips the SOMA/SEED skeleton's feet
+                # backward. Use a PROPER rotation (x,y,z)->(x,-z,y) so the
+                # toe-forward-of-ankle geometry is preserved.
+                hx, hy, hz = (human_joints[..., 0], human_joints[..., 1],
+                              human_joints[..., 2])
+                human_joints = np.stack([hx, -hz, hy], axis=-1)
+            else:
+                human_joints = transform_y_up_to_z_up(human_joints)
             spine_joint_idx = constants.DEMO_JOINTS.index("Spine1")
             # LAFAN-specific spine adjustment
             human_joints[:, spine_joint_idx, -1] -= 0.06

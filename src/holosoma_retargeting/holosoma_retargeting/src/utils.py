@@ -790,6 +790,14 @@ def estimate_human_orientation(human_joints, joint_names, frame_idx=0):
     # Calculate forward direction (from hips to spine)
     forward_vec = hips_pos - spine_pos
     forward_vec[2] = 0  # Project to horizontal plane (ignore vertical component)
+    if np.linalg.norm(forward_vec) < 2e-2:
+        # Spine is (near-)vertically aligned with the hips, e.g. the SOMA/SEED
+        # skeleton, so hips->spine has no reliable horizontal component and
+        # would give a random facing. Derive forward from the reliable
+        # left->right hip lateral axis instead: forward = lateral x up.
+        lateral = left_hip_pos - right_hip_pos
+        lateral[2] = 0
+        forward_vec = np.cross(lateral, np.array([0.0, 0.0, 1.0]))
     if np.linalg.norm(forward_vec) > 1e-6:
         forward_vec = forward_vec / np.linalg.norm(forward_vec)
     else:
