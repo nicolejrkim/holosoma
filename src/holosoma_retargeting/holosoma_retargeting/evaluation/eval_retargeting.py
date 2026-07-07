@@ -616,7 +616,14 @@ class RetargetingEvaluator:
             spine_joint_idx = self.demo_joints.index("Spine1")
             # LAFAN-specific spine adjustment
             human_joints[:, spine_joint_idx, -1] -= 0.06
-            smpl_scale = getattr(self.constants, "DEFAULT_SCALE_FACTOR", None) or 1.0
+            # Prefer height-based scaling when the format defines a nominal human height
+            # (e.g. SEED: ROBOT_HEIGHT / 1.70), matching the retarget path in
+            # robot_retarget.py; else fall back to the fixed default scale (lafan).
+            default_human_height = getattr(self.constants, "DEFAULT_HUMAN_HEIGHT", None)
+            if default_human_height:
+                smpl_scale = self.constants.ROBOT_HEIGHT / default_human_height
+            else:
+                smpl_scale = getattr(self.constants, "DEFAULT_SCALE_FACTOR", None) or 1.0
 
             human_joints = preprocess_motion_data(human_joints, self, toe_names, smpl_scale)
             demo_joints_for_contact = self.demo_joints

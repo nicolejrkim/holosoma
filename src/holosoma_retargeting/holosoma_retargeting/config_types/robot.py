@@ -159,13 +159,27 @@ class RobotConfig:
             ]
         if self.robot_type in ("r1", "h1_2"):
             return [
-                "left_ankle_roll_link",
-                "right_ankle_roll_link",
+                "left_ankle_roll_sphere_1_link",
+                "right_ankle_roll_sphere_1_link",
+                "left_ankle_roll_sphere_2_link",
+                "right_ankle_roll_sphere_2_link",
+                "left_ankle_roll_sphere_3_link",
+                "right_ankle_roll_sphere_3_link",
+                "left_ankle_roll_sphere_4_link",
+                "right_ankle_roll_sphere_4_link",
             ]
         if self.robot_type == "k1":
             return [
-                "left_foot_link",
-                "right_foot_link",
+                "left_foot_sphere_1_link",
+                "right_foot_sphere_1_link",
+                "left_foot_sphere_2_link",
+                "right_foot_sphere_2_link",
+                "left_foot_sphere_3_link",
+                "right_foot_sphere_3_link",
+                "left_foot_sphere_4_link",
+                "right_foot_sphere_4_link",
+                "left_foot_sphere_5_link",
+                "right_foot_sphere_5_link",
             ]
         raise ValueError(f"Invalid robot type: {self.robot_type}")
 
@@ -230,6 +244,11 @@ class RobotConfig:
         if self.manual_cost is not None:
             return self.manual_cost
 
+        # Keys index q_a INCLUDING the 7 floating-base dofs (q_a_init_idx=-7
+        # default), so 19/20 = waist_yaw/waist_roll as commented. For motions
+        # with large lateral torso bends (e.g. SEED stretches) the roll
+        # damping fights the lean — override per run via
+        # --robot-config.manual-cost 19 0.2 to damp yaw only.
         if self.robot_type == "g1":
             return {"19": 0.2, "20": 0.2}  # waist yaw, waist roll
         return {}

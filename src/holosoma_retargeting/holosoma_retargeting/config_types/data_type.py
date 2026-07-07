@@ -370,8 +370,8 @@ JOINTS_MAPPINGS = {
         "R_Elbow": "right_elbow_link",
         "L_Ankle": "left_ankle_pitch_link",
         "R_Ankle": "right_ankle_pitch_link",
-        "L_Foot": "left_ankle_roll_link",
-        "R_Foot": "right_ankle_roll_link",
+        "L_Foot": "left_ankle_roll_sphere_5_link",
+        "R_Foot": "right_ankle_roll_sphere_5_link",
         "L_Wrist": "left_wrist_roll_link",
         "R_Wrist": "right_wrist_roll_link",
     },
@@ -387,8 +387,8 @@ JOINTS_MAPPINGS = {
         "RightForeArm": "right_elbow_link",
         "LeftFoot": "left_ankle_pitch_link",
         "RightFoot": "right_ankle_pitch_link",
-        "LeftToeBase": "left_ankle_roll_link",
-        "RightToeBase": "right_ankle_roll_link",
+        "LeftToeBase": "left_ankle_roll_sphere_5_link",
+        "RightToeBase": "right_ankle_roll_sphere_5_link",
         "LeftHand": "left_wrist_roll_link",
         "RightHand": "right_wrist_roll_link",
     },
@@ -404,8 +404,8 @@ JOINTS_MAPPINGS = {
         "R_Elbow": "right_elbow_link",
         "L_Ankle": "left_ankle_pitch_link",
         "R_Ankle": "right_ankle_pitch_link",
-        "L_Foot": "left_ankle_roll_link",
-        "R_Foot": "right_ankle_roll_link",
+        "L_Foot": "left_ankle_roll_sphere_5_link",
+        "R_Foot": "right_ankle_roll_sphere_5_link",
         "L_Wrist": "left_wrist_yaw_link",
         "R_Wrist": "right_wrist_yaw_link",
     },
@@ -421,8 +421,8 @@ JOINTS_MAPPINGS = {
         "RightForeArm": "right_elbow_link",
         "LeftFoot": "left_ankle_pitch_link",
         "RightFoot": "right_ankle_pitch_link",
-        "LeftToeBase": "left_ankle_roll_link",
-        "RightToeBase": "right_ankle_roll_link",
+        "LeftToeBase": "left_ankle_roll_sphere_5_link",
+        "RightToeBase": "right_ankle_roll_sphere_5_link",
         "LeftHand": "left_wrist_yaw_link",
         "RightHand": "right_wrist_yaw_link",
     },
@@ -438,8 +438,8 @@ JOINTS_MAPPINGS = {
         "R_Elbow": "right_hand_link",
         "L_Ankle": "Left_Ankle_Cross",
         "R_Ankle": "Right_Ankle_Cross",
-        "L_Foot": "left_foot_link",
-        "R_Foot": "right_foot_link",
+        "L_Foot": "left_foot_sphere_5_link",
+        "R_Foot": "right_foot_sphere_5_link",
     },
     ("lafan", "k1"): {
         "Spine1": "Trunk",
@@ -453,39 +453,40 @@ JOINTS_MAPPINGS = {
         "RightForeArm": "right_hand_link",
         "LeftFoot": "Left_Ankle_Cross",
         "RightFoot": "Right_Ankle_Cross",
-        "LeftToeBase": "left_foot_link",
-        "RightToeBase": "right_foot_link",
+        "LeftToeBase": "left_foot_sphere_5_link",
+        "RightToeBase": "right_foot_sphere_5_link",
     },
     ("seed", "g1"): {
-        "Spine1": "pelvis_contour_link",
-        "LeftLeg": "left_hip_pitch_link",
-        "LeftShin": "left_knee_link",
-        "LeftFoot": "left_ankle_intermediate_1_link",
+        "Hips": "pelvis_contour_link",
+        "Chest": "torso_link",
+        "LeftLeg": "left_hip_roll_link",
         "LeftToeBase": "left_ankle_roll_sphere_5_link",
+        "LeftShin": "left_knee_link",
+        "LeftFoot": "left_ankle_roll_link",
         "LeftArm": "left_shoulder_roll_link",
         "LeftForeArm": "left_elbow_link",
-        "LeftHand": "left_rubber_hand_link",
-        "RightLeg": "right_hip_pitch_link",
-        "RightShin": "right_knee_link",
-        "RightFoot": "right_ankle_intermediate_1_link",
+        "LeftHand": "left_wrist_yaw_link",
+        "RightLeg": "right_hip_roll_link",
         "RightToeBase": "right_ankle_roll_sphere_5_link",
+        "RightShin": "right_knee_link",
+        "RightFoot": "right_ankle_roll_link",
         "RightArm": "right_shoulder_roll_link",
         "RightForeArm": "right_elbow_link",
-        "RightHand": "right_rubber_hand_link",
+        "RightHand": "right_wrist_yaw_link",
     },
     ("seed", "r1"): {
         "Spine1": "pelvis_link",
         "LeftLeg": "left_hip_pitch_link",
         "LeftShin": "left_knee_link",
         "LeftFoot": "left_ankle_pitch_link",
-        "LeftToeBase": "left_ankle_roll_link",
+        "LeftToeBase": "left_ankle_roll_sphere_5_link",
         "LeftArm": "left_shoulder_roll_link",
         "LeftForeArm": "left_elbow_link",
         "LeftHand": "left_wrist_roll_link",
         "RightLeg": "right_hip_pitch_link",
         "RightShin": "right_knee_link",
         "RightFoot": "right_ankle_pitch_link",
-        "RightToeBase": "right_ankle_roll_link",
+        "RightToeBase": "right_ankle_roll_sphere_5_link",
         "RightArm": "right_shoulder_roll_link",
         "RightForeArm": "right_elbow_link",
         "RightHand": "right_wrist_roll_link",
@@ -495,14 +496,14 @@ JOINTS_MAPPINGS = {
         "LeftLeg": "left_hip_pitch_link",
         "LeftShin": "left_knee_link",
         "LeftFoot": "left_ankle_pitch_link",
-        "LeftToeBase": "left_ankle_roll_link",
+        "LeftToeBase": "left_ankle_roll_sphere_5_link",
         "LeftArm": "left_shoulder_roll_link",
         "LeftForeArm": "left_elbow_link",
         "LeftHand": "left_wrist_yaw_link",
         "RightLeg": "right_hip_pitch_link",
         "RightShin": "right_knee_link",
         "RightFoot": "right_ankle_pitch_link",
-        "RightToeBase": "right_ankle_roll_link",
+        "RightToeBase": "right_ankle_roll_sphere_5_link",
         "RightArm": "right_shoulder_roll_link",
         "RightForeArm": "right_elbow_link",
         "RightHand": "right_wrist_yaw_link",
@@ -512,13 +513,13 @@ JOINTS_MAPPINGS = {
         "LeftLeg": "Left_Hip_Pitch",
         "LeftShin": "Left_Shank",
         "LeftFoot": "Left_Ankle_Cross",
-        "LeftToeBase": "left_foot_link",
+        "LeftToeBase": "left_foot_sphere_5_link",
         "LeftArm": "Left_Arm_3",
         "LeftForeArm": "left_hand_link",
         "RightLeg": "Right_Hip_Pitch",
         "RightShin": "Right_Shank",
         "RightFoot": "Right_Ankle_Cross",
-        "RightToeBase": "right_foot_link",
+        "RightToeBase": "right_foot_sphere_5_link",
         "RightArm": "Right_Arm_3",
         "RightForeArm": "right_hand_link",
     },
@@ -561,7 +562,7 @@ JOINTS_MAPPINGS = {
 # Data format specific constants
 TOE_NAMES_BY_FORMAT = {
     "lafan": ["LeftToeBase", "RightToeBase"],
-    "seed": ["LeftToeBase", "RightToeBase"],
+    "seed": ["LeftToeBase", "RightToeBase"], # Question should we add LeftToeEnd? RightToeEnd too?
     "smplh": ["L_Toe", "R_Toe"],
     "mocap": ["LeftToeBase", "RightToeBase"],
     "smplx": ["L_Foot", "R_Foot"],
@@ -579,7 +580,7 @@ DATA_FORMAT_CONSTANTS: dict[str, FormatConstants] = {
         "default_scale_factor": 1.27 / 1.7,
     },
     "seed": {
-        "default_scale_factor": 1.27 / 1.7,
+        "default_human_height": 1.70,
     },
     "mocap": {
         "default_human_height": 1.78,
@@ -678,6 +679,20 @@ class MotionDataConfig:
         """Get default human height for this data format (None if not applicable)."""
         format_constants: FormatConstants = DATA_FORMAT_CONSTANTS.get(self.data_format, {})
         return format_constants.get("default_human_height")
+
+    @property
+    def resolved_scale_factor(self) -> float | None:
+        """Scale factor for formats that use a fixed default (lafan).
+
+        Robots listed in LAFAN_ROBOT_SCALE_OVERRIDES use a per-robot scale so their feet plant on
+        a common ground; all other robots keep the format default unchanged. SEED does not use this
+        path -- it scales height-based (ROBOT_HEIGHT / default_human_height) in the loader.
+        """
+        if self.data_format == "lafan":
+            override = LAFAN_ROBOT_SCALE_OVERRIDES.get(self.robot_type)
+            if override is not None:
+                return override
+        return self.default_scale_factor
 
     def legacy_constants(self) -> dict[str, Any]:
         """Return uppercase legacy constants for backward compatibility."""

@@ -224,7 +224,14 @@ def load_motion_data(
             spine_joint_idx = constants.DEMO_JOINTS.index("Spine1")
             # LAFAN-specific spine adjustment
             human_joints[:, spine_joint_idx, -1] -= 0.06
-            smpl_scale = motion_data_config.default_scale_factor or 1.0
+            if data_format == "seed":
+                # README-default height-based scaling: scale by this robot's height
+                # over a nominal human stature (the SEED .npy carries no per-subject
+                # height). Auto-adapts per robot -- no hand-tuned per-robot override.
+                default_human_height = motion_data_config.default_human_height or 1.70
+                smpl_scale = constants.ROBOT_HEIGHT / default_human_height
+            else:
+                smpl_scale = motion_data_config.resolved_scale_factor or 1.0
         elif data_format == "smplh":  # smplh
             pt_path = data_path / f"{task_name}.pt"
             if not pt_path.exists():
