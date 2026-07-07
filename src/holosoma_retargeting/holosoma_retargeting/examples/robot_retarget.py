@@ -215,6 +215,18 @@ def load_motion_data(
             # LAFAN-specific spine adjustment
             human_joints[:, spine_joint_idx, -1] -= 0.06
             smpl_scale = motion_data_config.default_scale_factor or 1.0
+        elif data_format == "seed":
+            npy_path = data_path / f"{task_name}.npy"
+            if not npy_path.exists():
+                raise FileNotFoundError(f"seed data file not found: {npy_path}")
+
+            human_joints = np.load(str(npy_path))
+            # Use (x,y,z) -> (x,-z,y) - this matches soma-retargeter's own
+            # SpaceConverter for its "Mujoco" facing direction (a +90deg
+            # rotation about X), which is the same convention this BVH source uses.
+            hx, hy, hz = human_joints[..., 0], human_joints[..., 1], human_joints[..., 2]
+            human_joints = np.stack([hx, -hz, hy], axis=-1)
+            smpl_scale = motion_data_config.default_scale_factor or 1.0
         elif data_format == "smplh":  # smplh
             pt_path = data_path / f"{task_name}.pt"
             if not pt_path.exists():
@@ -400,6 +412,15 @@ def _compute_q_init_base(
             # MuJoCo order: pos first, then quat
             q_init_base = np.concatenate(
                 [human_joints[0, spine_joint_idx, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)]
+            )
+        elif data_format == "seed":
+            # seed's ("seed", <robot>) JOINTS_MAPPING roots on "Hips" (matching
+            # soma-retargeter's own ik_map root choice)
+            hips_joint_idx = constants.DEMO_JOINTS.index("Hips")
+            human_quat_init = estimate_human_orientation(human_joints, constants.DEMO_JOINTS)
+            # MuJoCo order: pos first, then quat
+            q_init_base = np.concatenate(
+                [human_joints[0, hips_joint_idx, :3], human_quat_init, np.zeros(constants.ROBOT_DOF)]
             )
         else:  # smplh
             _, human_quat_init = transform_from_human_to_world(
