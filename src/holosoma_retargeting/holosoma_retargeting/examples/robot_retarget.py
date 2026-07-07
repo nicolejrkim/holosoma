@@ -226,7 +226,8 @@ def load_motion_data(
             # rotation about X), which is the same convention this BVH source uses.
             hx, hy, hz = human_joints[..., 0], human_joints[..., 1], human_joints[..., 2]
             human_joints = np.stack([hx, -hz, hy], axis=-1)
-            smpl_scale = motion_data_config.default_scale_factor or 1.0
+            default_human_height = motion_data_config.default_human_height or 1.70
+            smpl_scale = constants.ROBOT_HEIGHT / default_human_height
         elif data_format == "smplh":  # smplh
             pt_path = data_path / f"{task_name}.pt"
             if not pt_path.exists():

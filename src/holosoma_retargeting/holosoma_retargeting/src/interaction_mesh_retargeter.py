@@ -507,11 +507,12 @@ class InteractionMeshRetargeter:
             robot_kpts_handle_list.clear()
 
         # Save results
+        fps = getattr(self.task_constants, "FPS", 30)
         np.savez(
             dest_res_path,
             qpos=np.array(retargeted_motions)[1:],
             human_joints=human_joint_motions,
-            fps=30,
+            fps=fps,
             cost=cost,
         )
         print("Saving results to path:", dest_res_path)
@@ -528,7 +529,7 @@ class InteractionMeshRetargeter:
                 viser_object=self.viser_object,
                 object_base_frame=getattr(self, "object_base", None) if self.viser_object else None,
                 contains_object_in_qpos=bool(self.viser_object) and bool(self.has_dynamic_object),
-                initial_fps=30,
+                initial_fps=fps,
                 initial_interp_mult=2,
                 loop=False,
             )

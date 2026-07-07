@@ -313,6 +313,29 @@ JOINTS_MAPPINGS = {
         "LeftHand": "left_wrist_yaw_link",
         "RightHand": "right_wrist_yaw_link",
     },
+    ("seed", "t1"): {
+        # T1 analogs of the ("seed", "g1") anchors, using the same T1 links
+        # as the (lafan/smplh, t1) mappings: Waist's frame sits on the hip
+        # line (T1's pelvis), Trunk is the torso body, AL1/AR1 the
+        # shoulders, left/right_hand_link the forearms, and Ankle_Cross_*
+        # the ankles.
+        "Hips": "Waist",
+        "Chest": "Trunk",
+        "LeftLeg": "Hip_Roll_Left",
+        "RightLeg": "Hip_Roll_Right",
+        "LeftShin": "Shank_Left",
+        "RightShin": "Shank_Right",
+        "LeftArm": "AL1",
+        "RightArm": "AR1",
+        "LeftForeArm": "left_hand_link",
+        "RightForeArm": "right_hand_link",
+        "LeftFoot": "Ankle_Cross_Left",
+        "RightFoot": "Ankle_Cross_Right",
+        "LeftToeBase": "left_foot_sphere_5_link",
+        "RightToeBase": "right_foot_sphere_5_link",
+        "LeftHand": "left_hand_sphere_link",
+        "RightHand": "right_hand_sphere_link",
+    },
     ("smplh", "g1"): {
         "Pelvis": "pelvis_contour_link",
         "L_Hip": "left_hip_pitch_link",
@@ -414,6 +437,7 @@ TOE_NAMES_BY_FORMAT = {
 class FormatConstants(TypedDict, total=False):
     default_scale_factor: float | None
     default_human_height: float | None
+    default_fps: int
 
 
 DATA_FORMAT_CONSTANTS: dict[str, FormatConstants] = {
@@ -422,7 +446,9 @@ DATA_FORMAT_CONSTANTS: dict[str, FormatConstants] = {
     },
     # Based on soma-retargeters human-G1 scaling
     "seed": {
-        "default_scale_factor": 0.781,
+        "default_human_height": 1.70,
+        # BONES-SEED BVH mocap is 120 Hz (Frame Time 0.008333)
+        "default_fps": 120,
     },
     "mocap": {
         "default_human_height": 1.78,
@@ -522,6 +548,12 @@ class MotionDataConfig:
         format_constants: FormatConstants = DATA_FORMAT_CONSTANTS.get(self.data_format, {})
         return format_constants.get("default_human_height")
 
+    @property
+    def default_fps(self) -> int:
+        """Get the source frame rate for this data format (30 if not specified)."""
+        format_constants: FormatConstants = DATA_FORMAT_CONSTANTS.get(self.data_format, {})
+        return format_constants.get("default_fps", 30)
+
     def legacy_constants(self) -> dict[str, Any]:
         """Return uppercase legacy constants for backward compatibility."""
         return {
@@ -530,4 +562,5 @@ class MotionDataConfig:
             "TOE_NAMES": self.toe_names,
             "DEFAULT_SCALE_FACTOR": self.default_scale_factor,
             "DEFAULT_HUMAN_HEIGHT": self.default_human_height,
+            "FPS": self.default_fps,
         }
