@@ -1121,15 +1121,21 @@ Original Source: https://github.com/google-deepmind/mujoco_playground
    See the License for the specific language governing permissions and
    limitations under the License.
 ========================================================================
-Unitree R1 robot description (URDF, MJCF, and meshes)
+Unitree R1 and H1-2 robot descriptions (URDF, MJCF, and meshes)
 Original Source: https://github.com/unitreerobotics/unitree_ros
-                   (r1_24dof.urdf and meshes: robots/r1_description/R1.urdf
+                   (r1_24dof.urdf and r1 meshes: robots/r1_description/R1.urdf
+                    @ d6f13aad60320ce1d60a07b82a76b5a553f2a0a9)
+                   (h1_2_27dof.urdf and h1_2 meshes:
+                    robots/h1_2_description/h1_2_handless.urdf
                     @ d6f13aad60320ce1d60a07b82a76b5a553f2a0a9)
                  https://github.com/unitreerobotics/unitree_mujoco
                    (r1_24dof.xml: unitree_robots/r1/R1_C++.xml
                     @ c598f103acb87a5fd3de7c9037f4dab6aa7f232b)
+                   (h1_2_27dof.xml: unitree_robots/h1_2/h1_2_handless.xml
+                    @ ae6a8403e272733e9996ef59990880330496177f)
                  Modifications are noted in each file's header comment.
 Vendored at: src/holosoma_retargeting/holosoma_retargeting/models/r1/
+             src/holosoma_retargeting/holosoma_retargeting/models/h1_2/
 Both sources are licensed under the BSD 3-Clause License below.
 ========================================================================
 BSD 3-Clause License

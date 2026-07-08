@@ -317,7 +317,9 @@ JOINTS_MAPPINGS = {
         # Same anatomical anchors as ("seed", "g1"). R1 has no separate
         # torso_link - the torso body after its waist roll/yaw chain is
         # waist_yaw_link - and its 24-dof arm ends at wrist_roll.
-        "Hips": "pelvis_contour_link",
+        # NOTE: R1 has no pelvis_contour_link (that is a G1 link); its
+        # pelvis body/link is pelvis_link.
+        "Hips": "pelvis_link",
         "Spine1": "waist_yaw_link",
         "LeftLeg": "left_hip_roll_link",
         "RightLeg": "right_hip_roll_link",
@@ -333,6 +335,27 @@ JOINTS_MAPPINGS = {
         "RightToeBase": "right_ankle_roll_sphere_5_link",
         "LeftHand": "left_wrist_roll_link",
         "RightHand": "right_wrist_roll_link",
+    },
+    ("seed", "h1_2"): {
+        # Same anatomical anchors as ("seed", "g1"): H1-2 (27-dof handless)
+        # shares G1's link naming - thigh is hip_roll_link (hip order is
+        # yaw/pitch/roll) and the 3-dof wrist ends at wrist_yaw_link.
+        "Hips": "pelvis",
+        "Chest": "torso_link",
+        "LeftLeg": "left_hip_roll_link",
+        "RightLeg": "right_hip_roll_link",
+        "LeftShin": "left_knee_link",
+        "RightShin": "right_knee_link",
+        "LeftArm": "left_shoulder_roll_link",
+        "RightArm": "right_shoulder_roll_link",
+        "LeftForeArm": "left_elbow_link",
+        "RightForeArm": "right_elbow_link",
+        "LeftFoot": "left_ankle_roll_link",
+        "RightFoot": "right_ankle_roll_link",
+        "LeftToeBase": "left_ankle_roll_sphere_5_link",
+        "RightToeBase": "right_ankle_roll_sphere_5_link",
+        "LeftHand": "left_wrist_yaw_link",
+        "RightHand": "right_wrist_yaw_link",
     },
     ("seed", "t1"): {
         # T1 analogs of the ("seed", "g1") anchors, using the same T1 links

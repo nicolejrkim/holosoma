@@ -19,6 +19,7 @@ _ROBOT_DEFAULTS: dict[str, RobotDefaults] = {
     "g1": {"robot_dof": 29, "robot_height": 1.32, "object_name": "ground"},
     "t1": {"robot_dof": 23, "robot_height": 1.2, "object_name": "ground"},
     "r1": {"robot_dof": 24, "robot_height": 1.23, "object_name": "ground"},
+    "h1_2": {"robot_dof": 27, "robot_height": 1.79, "object_name": "ground"},
 }
 
 
@@ -131,7 +132,7 @@ class RobotConfig:
         if self.foot_sticking_links is not None:
             return self.foot_sticking_links
 
-        if self.robot_type in ("g1", "r1"):
+        if self.robot_type in ("g1", "r1", "h1_2"):
             return [
                 "left_ankle_roll_sphere_1_link",
                 "right_ankle_roll_sphere_1_link",
@@ -229,8 +230,8 @@ class RobotConfig:
         if self.nominal_tracking_indices is not None:
             return self.nominal_tracking_indices
 
-        if self.robot_type in ("g1", "r1"):
-            # 7 base + 12 leg joints; both robots order legs first in qpos
+        if self.robot_type in ("g1", "r1", "h1_2"):
+            # 7 base + 12 leg joints; these robots order legs first in qpos
             return np.arange(19)
         if self.robot_type == "t1":
             return np.concatenate([np.arange(7), np.arange(11, 23)])
