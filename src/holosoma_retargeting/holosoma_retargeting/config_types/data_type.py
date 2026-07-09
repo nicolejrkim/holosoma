@@ -310,8 +310,12 @@ JOINTS_MAPPINGS = {
         "RightFoot": "right_ankle_roll_link",
         "LeftToeBase": "left_ankle_roll_sphere_5_link",
         "RightToeBase": "right_ankle_roll_sphere_5_link",
-        "LeftHand": "left_wrist_yaw_link",
-        "RightHand": "right_wrist_yaw_link",
+        # rubber_hand anchors instead of wrist_yaw_link (which soma-retargeter's
+        # ik_map uses): G1's elbow->wrist_yaw chain is ~4 cm shorter than the
+        # height-scaled human forearm, leaving resting-arm hand targets
+        # unreachable; elbow->rubber_hand (22.6 cm) matches the human (21.1 cm).
+        "LeftHand": "left_rubber_hand_link",
+        "RightHand": "right_rubber_hand_link",
     },
     ("seed", "r1"): {
         # Same anatomical anchors as ("seed", "g1"). R1 has no separate
@@ -333,8 +337,12 @@ JOINTS_MAPPINGS = {
         "RightFoot": "right_ankle_roll_link",
         "LeftToeBase": "left_ankle_roll_sphere_5_link",
         "RightToeBase": "right_ankle_roll_sphere_5_link",
-        "LeftHand": "left_wrist_roll_link",
-        "RightHand": "right_wrist_roll_link",
+        # hand_sphere anchors (palm center, +0.10 m past the wrist) instead of
+        # wrist_roll_link: R1's elbow->wrist chain is ~8 cm shorter than the
+        # height-scaled human forearm, which left resting-arm hand targets
+        # unreachable and the arm stuck in throw wind-up poses.
+        "LeftHand": "left_hand_sphere_link",
+        "RightHand": "right_hand_sphere_link",
     },
     ("seed", "h1_2"): {
         # Same anatomical anchors as ("seed", "g1"): H1-2 (27-dof handless)

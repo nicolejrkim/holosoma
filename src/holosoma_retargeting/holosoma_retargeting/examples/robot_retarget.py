@@ -210,6 +210,14 @@ def load_motion_data(
                 raise FileNotFoundError(f"LAFAN data file not found: {npy_path}")
 
             human_joints = np.load(str(npy_path))
+            # NOTE: transform_y_up_to_z_up is a y<->z swap (det -1, a reflection)
+            # that left-right MIRRORS the motion. It is kept deliberately: the
+            # LAFAN interaction-mesh/foot logic is coupled to this left-handed
+            # frame and only stays coherent (feet + torso agree) under it. A
+            # proper det+1 rotation un-mirrors the facing but splits the body
+            # (feet vs torso ~140deg apart). See RESULTS.md "holosoma LAFAN
+            # orientation" for the full finding; a correct fix needs an output
+            # left-right remap, not a transform change.
             human_joints = transform_y_up_to_z_up(human_joints)
             spine_joint_idx = constants.DEMO_JOINTS.index("Spine1")
             # LAFAN-specific spine adjustment

@@ -11,6 +11,9 @@ Changes vs upstream R1.urdf (which is 26 dof):
     the head); head links, visuals, and inertias are kept
   - added strippath="true" to the <mujoco><compiler> extension tag so
     MuJoCo (>=3.x) does not double the meshes/ prefix when importing directly
+  - added a fixed hand anchor link per arm (left/right_hand_sphere_link,
+    at the palm center 0.10 m along the wrist_roll_link x-axis) so the
+    retargeter's hand anchor chain matches human forearm proportions
   - added 5 fixed foot contact sphere links per foot
     (left/right_ankle_roll_sphere_1..5_link) for the retargeter's foot-sticking
     constraint, following the g1/t1 model convention
@@ -1367,5 +1370,41 @@ All other joints and inertials are unchanged from upstream.
     <origin xyz="0.13 0 -0.05" rpy="0 0 0"/>
     <parent link="right_ankle_roll_link"/>
     <child link="right_ankle_roll_sphere_5_link"/>
+  </joint>
+  <link name="left_hand_sphere_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </visual>
+  </link>
+  <joint name="left_hand_sphere_joint" type="fixed">
+    <origin xyz="0.1 0 0" rpy="0 0 0"/>
+    <parent link="left_wrist_roll_link"/>
+    <child link="left_hand_sphere_link"/>
+  </joint>
+  <link name="right_hand_sphere_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </visual>
+  </link>
+  <joint name="right_hand_sphere_joint" type="fixed">
+    <origin xyz="0.1 0 0" rpy="0 0 0"/>
+    <parent link="right_wrist_roll_link"/>
+    <child link="right_hand_sphere_link"/>
   </joint>
 </robot>
