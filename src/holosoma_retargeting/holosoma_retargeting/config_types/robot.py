@@ -199,6 +199,11 @@ class RobotConfig:
             base.update(
                 {
                     "20": 0.3,  # waist roll
+                    # shoulder pitch capped at +90 deg: without it, lowering a
+                    # raised arm can take a wrap-around branch that parks the
+                    # shoulder at the +153 deg pitch limit (seen on SEED wave)
+                    "22": 1.57,  # left shoulder pitch
+                    "29": 1.57,  # right shoulder pitch
                     "25": 1.4,  # right elbow
                     "26": 0.2,  # right wrist
                     "27": 0.3,
